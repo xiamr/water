@@ -19,7 +19,8 @@ import (
 
 const (
 	// tapDriverKey is a location of the TAP driver key.
-	tapDriverKey = `SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}`
+	tapDriverKey  = `SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}`
+	tapNetworkKey = `SYSTEM\CurrentControlSet\Control\Network\{4D36E972-E325-11CE-BFC1-08002BE10318}`
 )
 
 var (
@@ -143,6 +144,20 @@ func tap_control_code(request, method uint32) uint32 {
 	return ctl_code(file_device_unknown, request, method, 0)
 }
 
+func compare_interfacename(tapkey, deviceid, interfaceName string) error {
+	key := fmt.Sprintf("%s\\%s\\Connection", tapNetworkKey, deviceid)
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, key, registry.READ)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	name, _, err := k.GetStringValue("Name")
+	if err != nil || name != interfaceName {
+		return errors.New("Name comparation failed")
+	}
+	return nil
+}
+
 // getdeviceid finds out a TAP device from registry, it *may* requires privileged right to prevent some weird issue.
 func getdeviceid(componentID string, interfaceName string) (deviceid string, err error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, tapDriverKey, registry.READ)
@@ -173,14 +188,7 @@ func getdeviceid(componentID string, interfaceName string) (deviceid string, err
 				continue
 			}
 			if len(interfaceName) > 0 {
-				key2 := fmt.Sprintf("%s\\%s\\Connection", tapDriverKey, val)
-				k2, err := registry.OpenKey(registry.LOCAL_MACHINE, key2, registry.READ)
-				if err != nil {
-					continue
-				}
-				defer k2.Close()
-				val, _, err := k2.GetStringValue("Name")
-				if err != nil || val != interfaceName {
+				if compare_interfacename(tapDriverKey, val, interfaceName) != nil && compare_interfacename(tapNetworkKey, val, interfaceName) != nil {
 					continue
 				}
 			}
